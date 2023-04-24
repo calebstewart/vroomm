@@ -26,9 +26,9 @@ Currently supported features:
 * Create linked and full clones interactively
 * Edit and apply changes to raw libvirt domain XML
 * Start `virt-viewer` or `looking-glass` for VMs.
+* Manage snapshots (create, restore, delete)
 
 Features In Progress:
-* Manage snapshots (create, restore, delete)
 * Interactively move VMs inside the pseudo-filesystem
 * Interactively add tags/labels to VMs
 * View "child" VMs which exist as clones of a single VM
