@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+      - run: apt install -y libgtk-3-0 libgtk-3-dev libvirt0 libvirt-dev
       - run: git fetch --force --tags
       - uses: actions/setup-go@v4
         with:
