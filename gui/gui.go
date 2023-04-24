@@ -161,10 +161,6 @@ func (app *Application) activate() {
 		layershell.SetLayer(&app.Window.Window, layershell.LayerShellLayerTop)
 		layershell.SetKeyboardInteractivity(&app.Window.Window, true)
 		layershell.SetKeyboardMode(&app.Window.Window, layershell.LayerShellKeyboardModeExclusive)
-
-		// Connect a handler for configure-event to set appropriate size based on varying display geometry
-		app.Window.Connect("configure-event", app.updateWindowGeometry)
-
 	}
 
 	// Enable key press events for the root window
@@ -186,6 +182,26 @@ func (app *Application) activate() {
 	app.updateViewTitle()
 
 	app.Window.ShowAll()
+
+	if app.Config.LayerShell.Enabled {
+		// This is stupid, but it's the only way to properly configure the size
+		// since GTK reports the display size of the default window for an indeterminant
+		// amount of time after creation, and there is no signal for when this changes.
+		//
+		// Instead, we just run this background routine which executes updateWindowGeometry
+		// every millisecond for up to 1 second, and then quits. It works, but I'm not happy
+		// about it.
+		go func() {
+			for {
+				select {
+				case <-time.After(time.Millisecond):
+					app.updateWindowGeometry(app.Window)
+				case <-time.After(time.Second):
+					return
+				}
+			}
+		}()
+	}
 
 	// Setup the initial geometry
 	app.updateWindowGeometry(app.Window)
