@@ -1,6 +1,9 @@
 package gui
 
 import (
+	"context"
+
+	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v3"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 )
@@ -157,10 +160,34 @@ func NewMainMenu() *MainMenu {
 }
 
 func (menu *MainMenu) Enter(app *Application) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	app.PulseProgress(ctx, "Loading active virtual machines...")
+
 	menu.EmptyItems()
 	menu.Add(NewBrowseAllItem(app))
 	menu.Add(NewBrowseFolderItem(app, "/", ""))
 	menu.Add(NewLabelsViewItem(app))
+
+	go func() {
+		virtConn := app.Virt()
+		if domains, err := virtConn.EnumerateActiveDomains(); err != nil {
+			app.AddError(err)
+			cancel()
+			return
+		} else {
+			glib.IdleAdd(func() {
+				defer cancel()
+				for _, domain := range domains {
+					if item, err := NewVirtualMachineItem(app, domain); err != nil {
+						app.AddError(err)
+					} else {
+						menu.Add(item)
+					}
+				}
+			})
+		}
+	}()
+
 	return menu.FlowboxMenu.Enter(app)
 }
 
