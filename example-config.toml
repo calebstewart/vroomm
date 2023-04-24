@@ -1,0 +1,10 @@
+connect_uri = "qemu:///system" # libvirt connection string (can be remote, default is qemu:///system)
+use_style = true               # load and apply a stylesheet (if none can be found, the bundled stylesheet is used)
+# style = "/path/to/style.css"   # path to a Gtk stylesheet (default is $XDG_CONFIG_HOME/vroomm/style.css)
+
+[layershell]
+enabled       = true   # enable wlr-layer-shell
+width         = 50     # width as percentage of output width
+height        = 50     # height as percentage of output height
+edge          = "none" # "none" means not to attach to an edge; left, right, top, bottom are options
+exclusivezone = 0      # Size of the exclusive zone when attached to an edge (0 is auto)

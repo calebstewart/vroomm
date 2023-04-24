@@ -1,0 +1,87 @@
+* {
+    font-family: monospace;
+}
+
+* > label {
+    color: rgb(158, 158, 158);
+}
+
+.background {
+    background: rgba(33,33,33,1);
+}
+
+window {
+    border: 1px solid rgb(230,74,25);
+}
+
+#root {
+    margin: 1em;
+}
+
+#prompt {
+    padding-right: 1em;
+    color: rgb(158, 158, 158);
+}
+
+entry {
+    border: none;
+    box-shadow: none;
+    background: rgba(66, 66, 66, 0.5);
+    color: rgb(158, 158, 158);
+    caret-color: rgb(158, 158, 158);
+}
+
+#scrolledwindow {
+    background-color: transparent;
+    box-shadow: none;
+    border: none;
+}
+
+#status {
+    color: rgb(158, 158, 158);
+}
+
+flowboxchild {
+    background: transparent;
+}
+
+flowboxchild > * {
+    color: rgb(158, 158, 158);
+}
+
+flowboxchild:selected > * {
+	color: rgb(224, 224, 224);
+}
+
+flowboxchild:selected > * > label{
+	color: rgb(224, 224, 224);
+}
+
+flowboxchild:selected {
+	background-color: rgb(97, 97, 97);
+}
+
+list {
+    background-color: transparent;
+    padding-top: 0.5em;
+}
+
+row {
+    background-color: transparent;
+    color: rgb(158, 158, 158);
+    box-shadow: none;
+    border: none;
+    padding-top: 0.2em;
+    padding-bottom: 0.2em;
+    padding-left: 1em;
+    min-height: 2em;
+}
+
+label#path {
+    padding-top: 0.5em;
+    color: rgb(158, 158, 158);
+}
+
+separator {
+    background-color: rgb(158, 158, 158);
+}
