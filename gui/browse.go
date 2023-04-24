@@ -1,11 +1,13 @@
 package gui
 
 import (
+	"context"
 	"sort"
 	"strings"
 
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 
+	"github.com/calebstewart/vroomm/set"
 	"github.com/calebstewart/vroomm/virt"
 )
 
@@ -35,15 +37,11 @@ func NewBrowseAllItem(app *Application) *LabelItem {
 func NewBrowseFolderItem(app *Application, parent string, folder string) *LabelItem {
 	name := folder
 	if folder == "" && parent == "/" {
-		name = "Browse"
+		name = "Browse Path"
 	}
-	item := NewLabelItem(folderIcon, name)
-
-	item.ConnectActivate(func() {
+	return NewLabelItemWithAction(folderIcon, name, func() {
 		app.Push(NewBrowseFolderView(name, parent+folder))
 	})
-
-	return item
 }
 
 func NewBrowseAllView() *BrowseAllView {
@@ -176,5 +174,121 @@ func (menu *BrowseFolderView) Close(app *Application) error {
 }
 
 func (menu *BrowseFolderView) Leave(app *Application) error {
+	return nil
+}
+
+// A menu showing all existing labels
+type LabelsView struct {
+	*FlowboxMenu
+}
+
+func NewLabelsView() *LabelsView {
+	return &LabelsView{
+		FlowboxMenu: NewFlowboxMenu("Browse Labels"),
+	}
+}
+
+func NewLabelsViewItem(app *Application) *LabelItem {
+	return NewLabelItemWithAction("user-bookmarks-symbolic", "Browse Labels", func() {
+		app.Push(NewLabelsView())
+	})
+}
+
+func (view *LabelsView) Enter(app *Application) error {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	view.EmptyItems()
+	app.PulseProgress(ctx, "Loading Labels...")
+
+	go func() {
+		virtConn := app.Virt()
+		if domains, err := virtConn.EnumerateAllDomains(); err != nil {
+			app.AddError(err)
+		} else {
+			// Collect all valid labels from all domains
+			labels := set.Set[string]{}
+			for _, domain := range domains {
+				metadata := domain.GetVmmData()
+				labels.Add(metadata.Labels...)
+			}
+
+			// Create items for those labels
+			glib.IdleAdd(func() {
+				for label := range labels {
+					view.Add(NewLabelItemWithAction("user-bookmarks-symbolic", label, func() {
+						app.Push(NewBrowseLabelView(label))
+					}))
+				}
+				cancel()
+			})
+		}
+	}()
+
+	return view.FlowboxMenu.Enter(app)
+}
+
+func (view *LabelsView) Leave(app *Application) error {
+	return nil
+}
+
+func (view *LabelsView) Close(app *Application) error {
+	return nil
+}
+
+// A menu showing all VMs with a specific label
+type BrowseLabelView struct {
+	Label string
+	*FlowboxMenu
+}
+
+func NewBrowseLabelView(label string) *BrowseLabelView {
+	return &BrowseLabelView{
+		Label:       label,
+		FlowboxMenu: NewFlowboxMenu(label),
+	}
+}
+
+func (view *BrowseLabelView) Enter(app *Application) error {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	view.EmptyItems()
+	app.PulseProgress(ctx, "Loading Labels...")
+
+	go func() {
+		virtConn := app.Virt()
+		if domains, err := virtConn.EnumerateAllDomains(); err != nil {
+			app.AddError(err)
+		} else {
+			glib.IdleAdd(func() {
+				// Collect all direct domains and potential child folders
+				for _, domain := range domains {
+					metadata := domain.GetVmmData()
+					labels := set.New(metadata.Labels...)
+
+					// Add any VMs with this label
+					if labels.Has(view.Label) {
+						item, err := NewVirtualMachineItem(app, domain)
+						if err != nil {
+							app.AddError(err)
+						} else {
+							view.Add(item)
+						}
+					}
+				}
+
+				// Ensure the pulsing stops
+				cancel()
+			})
+		}
+	}()
+
+	return view.FlowboxMenu.Enter(app)
+}
+
+func (menu *BrowseLabelView) Close(app *Application) error {
+	return nil
+}
+
+func (menu *BrowseLabelView) Leave(app *Application) error {
 	return nil
 }

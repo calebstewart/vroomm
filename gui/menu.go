@@ -160,6 +160,7 @@ func (menu *MainMenu) Enter(app *Application) error {
 	menu.EmptyItems()
 	menu.Add(NewBrowseAllItem(app))
 	menu.Add(NewBrowseFolderItem(app, "/", ""))
+	menu.Add(NewLabelsViewItem(app))
 	return menu.FlowboxMenu.Enter(app)
 }
 

@@ -99,7 +99,7 @@ func (view *VirtualMachineView) updateView(app *Application) error {
 	view.CreateItem(app, "edit-copy-symbolic", "Linked Clone", app.Activation(view.linkedClone))
 	view.CreateItem(app, "edit-copy-symbolic", "Full Clone", app.Activation(view.fullClone))
 	view.CreateItem(app, "camera-photo-symbolic", "Take Snapshot", app.ActivationWithPulse(view.snapshot))
-	view.CreateItem(app, "document-open-recent-symbolic", "Restore Snapshot", app.ActivationWithPulse(view.restoreSnapshot))
+	view.CreateItem(app, "document-open-recent-symbolic", "Restore Snapshot", app.Activation(view.restoreSnapshot))
 	view.CreateItem(app, "folder-symbolic", "Move To...", app.ActivationWithPulse(view.move))
 	view.CreateItem(app, "user-bookmarks-symbolic", "Add Label", app.ActivationWithPulse(view.addLabel))
 	view.CreateItem(app, "user-bookmarks-symbolic", "Remove Label", app.ActivationWithPulse(view.addLabel))
@@ -327,6 +327,29 @@ func (view *VirtualMachineView) snapshot(app *Application) (string, error) {
 }
 
 func (view *VirtualMachineView) restoreSnapshot(app *Application) (string, error) {
+
+	app.Push(
+		NewSnapshotListView(view.Domain, "Revert", func(app *Application, domain *virt.Domain, snapshotName string) {
+			snapshot, err := domain.SnapshotLookupByName(snapshotName, 0)
+			if err != nil {
+				app.AddError(err)
+				return
+			}
+
+			app.ActivationWithPulse(func(app *Application) (string, error) {
+				if domainName, err := domain.GetName(); err != nil {
+					return "", err
+				} else {
+					return fmt.Sprintf(
+						"Virtual Machine '%v' reverted to snapshot '%v'",
+						domainName,
+						snapshotName,
+					), snapshot.RevertToSnapshot(0)
+				}
+			})()
+		}),
+	)
+
 	return "", nil
 }
 
