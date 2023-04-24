@@ -98,8 +98,9 @@ func (view *VirtualMachineView) updateView(app *Application) error {
 
 	view.CreateItem(app, "edit-copy-symbolic", "Linked Clone", app.Activation(view.linkedClone))
 	view.CreateItem(app, "edit-copy-symbolic", "Full Clone", app.Activation(view.fullClone))
-	view.CreateItem(app, "camera-photo-symbolic", "Take Snapshot", app.ActivationWithPulse(view.snapshot))
+	view.CreateItem(app, "camera-photo-symbolic", "Take Snapshot", app.Activation(view.snapshot))
 	view.CreateItem(app, "document-open-recent-symbolic", "Restore Snapshot", app.Activation(view.restoreSnapshot))
+	view.CreateItem(app, "user-trash-symbolic", "Delete Snapshot", app.Activation(view.deleteSnapshot))
 	view.CreateItem(app, "folder-symbolic", "Move To...", app.ActivationWithPulse(view.move))
 	view.CreateItem(app, "user-bookmarks-symbolic", "Add Label", app.ActivationWithPulse(view.addLabel))
 	view.CreateItem(app, "user-bookmarks-symbolic", "Remove Label", app.ActivationWithPulse(view.addLabel))
@@ -322,14 +323,85 @@ func (view *VirtualMachineView) fullClone(app *Application) (string, error) {
 	return "", nil
 }
 
+// Simple snapshot interface. It does not provide a way to specify the snapshot description
+// or customize the devices or memory snapshotting. It will naively select memory snapshotting
+// if the domain is current running, and snapshot all disks that are not read-only. The snapshot
+// will have a state of running if the VM is currently running. A description can be added
+// separately by editing the snapshot XML
 func (view *VirtualMachineView) snapshot(app *Application) (string, error) {
+	app.Push(
+		NewPrompt(
+			"Snapshot",
+			"Snapshot Name>",
+			view.doSnapshot,
+		),
+	)
 	return "", nil
 }
 
-func (view *VirtualMachineView) restoreSnapshot(app *Application) (string, error) {
+// This is the prompt action for the snapshot name prompt. It's a complex action, so I split
+// it out from a clojure into a real function.
+func (view *VirtualMachineView) doSnapshot(app *Application, name string) {
+	app.Pop()
+	ctx, cancel := context.WithCancel(context.Background())
+	app.PulseProgress(ctx, "Snapshotting Virtual Machine...")
 
+	go func() {
+		defer cancel()
+
+		domainDescription := libvirtxml.Domain{}
+		if xmlDescr, err := view.Domain.GetXMLDesc(libvirt.DOMAIN_XML_SECURE); err != nil {
+			glib.IdleAdd(func() { app.AddError(err) })
+			return
+		} else if err := xml.Unmarshal([]byte(xmlDescr), &domainDescription); err != nil {
+			glib.IdleAdd(func() { app.AddError(err) })
+			return
+		}
+
+		domainSnapshot := libvirtxml.DomainSnapshot{
+			Name:        name,
+			Description: "",
+			Parent:      nil,
+			Disks: &libvirtxml.DomainSnapshotDisks{
+				Disks: []libvirtxml.DomainSnapshotDisk{},
+			},
+			Domain: &domainDescription,
+		}
+
+		for _, disk := range domainDescription.Devices.Disks {
+			snapshot := ""
+			if disk.ReadOnly != nil {
+				snapshot = "no"
+			}
+
+			domainSnapshot.Disks.Disks = append(domainSnapshot.Disks.Disks, libvirtxml.DomainSnapshotDisk{
+				Name:     disk.Target.Dev,
+				Snapshot: snapshot,
+			})
+		}
+
+		if snapshotXml, err := xml.Marshal(&domainSnapshot); err != nil {
+			glib.IdleAdd(func() { app.AddError(err) })
+		} else if _, err := view.Domain.CreateSnapshotXML(string(snapshotXml), 0); err != nil {
+			glib.IdleAdd(func() { app.AddError(err) })
+		} else {
+			glib.IdleAdd(func() {
+				app.StatusBar.Push(
+					app.StatusBar.ContextID("snapshot"),
+					fmt.Sprintf("Created Snapshot '%v' of '%v'", name, domainDescription.Name),
+				)
+			})
+		}
+	}()
+}
+
+func (view *VirtualMachineView) deleteSnapshot(app *Application) (string, error) {
 	app.Push(
-		NewSnapshotListView(view.Domain, "Revert", func(app *Application, domain *virt.Domain, snapshotName string) {
+		NewSnapshotListView(view.Domain, "Delete", func(app *Application, domain *virt.Domain, snapshotName string) {
+
+			// Leave the snapshot selection view
+			app.Pop()
+
 			snapshot, err := domain.SnapshotLookupByName(snapshotName, 0)
 			if err != nil {
 				app.AddError(err)
@@ -339,12 +411,45 @@ func (view *VirtualMachineView) restoreSnapshot(app *Application) (string, error
 			app.ActivationWithPulse(func(app *Application) (string, error) {
 				if domainName, err := domain.GetName(); err != nil {
 					return "", err
+				} else if err := snapshot.Delete(0); err != nil {
+					return "", err
+				} else {
+					return fmt.Sprintf(
+						"Deleted Snapshot '%v' from Virtual Machine '%v'",
+						snapshotName,
+						domainName,
+					), err
+				}
+			})()
+		}),
+	)
+
+	return "", nil
+}
+
+func (view *VirtualMachineView) restoreSnapshot(app *Application) (string, error) {
+
+	app.Push(
+		NewSnapshotListView(view.Domain, "Revert", func(app *Application, domain *virt.Domain, snapshotName string) {
+			app.Pop()
+
+			snapshot, err := domain.SnapshotLookupByName(snapshotName, 0)
+			if err != nil {
+				app.AddError(err)
+				return
+			}
+
+			app.ActivationWithPulse(func(app *Application) (string, error) {
+				if domainName, err := domain.GetName(); err != nil {
+					return "", err
+				} else if err := snapshot.RevertToSnapshot(0); err != nil {
+					return "", err
 				} else {
 					return fmt.Sprintf(
 						"Virtual Machine '%v' reverted to snapshot '%v'",
 						domainName,
 						snapshotName,
-					), snapshot.RevertToSnapshot(0)
+					), nil
 				}
 			})()
 		}),
