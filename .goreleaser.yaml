@@ -24,6 +24,8 @@ archives:
       - LICENSE
       - README.md
       - example-config.toml
+      - src: resources/style.css
+        strip_parent: true
 
 checksum:
   name_template: 'checksums.txt'
