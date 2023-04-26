@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
@@ -14,6 +15,7 @@ import (
 	"libvirt.org/go/libvirt"
 	"libvirt.org/go/libvirtxml"
 
+	"github.com/calebstewart/vroomm/set"
 	"github.com/calebstewart/vroomm/virt"
 )
 
@@ -103,7 +105,7 @@ func (view *VirtualMachineView) updateView(app *Application) error {
 	view.CreateItem(app, "user-trash-symbolic", "Delete Snapshot", app.Activation(view.deleteSnapshot))
 	view.CreateItem(app, "folder-symbolic", "Move To...", app.ActivationWithPulse(view.move))
 	view.CreateItem(app, "user-bookmarks-symbolic", "Add Label", app.ActivationWithPulse(view.addLabel))
-	view.CreateItem(app, "user-bookmarks-symbolic", "Remove Label", app.ActivationWithPulse(view.addLabel))
+	view.CreateItem(app, "user-bookmarks-symbolic", "Remove Label", app.Activation(view.removeLabel))
 	view.CreateItem(app, "document-edit-symbolic", "Edit XML", app.ActivationWithPulse(view.editXML))
 
 	if selectedIndex > -1 {
@@ -264,7 +266,7 @@ func (view *VirtualMachineView) start(app *Application) (string, error) {
 }
 
 func (view *VirtualMachineView) linkedClone(app *Application) (string, error) {
-	prompt := NewPrompt("Linked Clone", "Clone Name>", func(app *Application, name string) {
+	prompt := NewPrompt(app, "Linked Clone", "Clone Name>", false, func(app *Application, name string) {
 		conn := app.Virt()
 		if _, err := conn.LookupDomainByName(name); err == nil {
 			app.AddError(fmt.Errorf("Virtual Machine '%v' already exists", name))
@@ -294,7 +296,7 @@ func (view *VirtualMachineView) linkedClone(app *Application) (string, error) {
 }
 
 func (view *VirtualMachineView) fullClone(app *Application) (string, error) {
-	prompt := NewPrompt("Full Clone", "Clone Name>", func(app *Application, name string) {
+	prompt := NewPrompt(app, "Full Clone", "Clone Name>", false, func(app *Application, name string) {
 		conn := app.Virt()
 		if _, err := conn.LookupDomainByName(name); err == nil {
 			app.AddError(fmt.Errorf("Virtual Machine '%v' already exists", name))
@@ -331,8 +333,10 @@ func (view *VirtualMachineView) fullClone(app *Application) (string, error) {
 func (view *VirtualMachineView) snapshot(app *Application) (string, error) {
 	app.Push(
 		NewPrompt(
+			app,
 			"Snapshot",
 			"Snapshot Name>",
+			false,
 			view.doSnapshot,
 		),
 	)
@@ -459,10 +463,135 @@ func (view *VirtualMachineView) restoreSnapshot(app *Application) (string, error
 }
 
 func (view *VirtualMachineView) move(app *Application) (string, error) {
+
+	virtConn := app.Virt()
+	domains, err := virtConn.EnumerateAllDomains()
+	if err != nil {
+		return "", err
+	}
+
+	folders := set.New[string]()
+	for _, domain := range domains {
+		info := domain.GetVmmData()
+		folders.Add(info.Path)
+	}
+
+	items := []*LabelItem{}
+	for folder := range folders {
+		items = append(items, NewLabelItem(folderIcon, folder))
+	}
+
+	app.Push(
+		NewPrompt(
+			app,
+			"Move to Folder",
+			"Path>",
+			false,
+			func(app *Application, entry string) {
+				info := view.Domain.GetVmmData()
+				info.Path = strings.TrimSuffix(entry, "/") + "/"
+				view.Domain.UpdateVmmData(info)
+				app.StatusBar.Push(
+					app.StatusBar.ContextID("move-vm"),
+					fmt.Sprintf("Moved '%v' to '%v'", view.DomainName, info.Path),
+				)
+				app.Pop()
+			},
+			items...,
+		),
+	)
+
 	return "", nil
 }
 
 func (view *VirtualMachineView) addLabel(app *Application) (string, error) {
+
+	virtConn := app.Virt()
+	domains, err := virtConn.EnumerateAllDomains()
+	if err != nil {
+		return "", err
+	}
+
+	existingLabels := set.New(view.Domain.GetVmmData().Labels...)
+
+	labels := set.New[string]()
+	for _, domain := range domains {
+		info := domain.GetVmmData()
+		labels.Add(info.Labels...)
+	}
+
+	items := []*LabelItem{}
+	for label := range labels {
+		if !existingLabels.Has(label) {
+			items = append(items, NewLabelItem("user-bookmarks-symbolic", label))
+		}
+	}
+
+	app.Push(
+		NewPrompt(
+			app,
+			"Add VM Label",
+			"Label>",
+			false,
+			func(app *Application, entry string) {
+				info := view.Domain.GetVmmData()
+
+				labels := set.New(info.Labels...)
+				labels.Add(entry)
+				info.Labels = labels.Array()
+
+				view.Domain.UpdateVmmData(info)
+
+				app.StatusBar.Push(
+					app.StatusBar.ContextID("label-vm"),
+					fmt.Sprintf("Added label '%v' to VM '%v'", entry, view.DomainName),
+				)
+				app.Pop()
+			},
+			items...,
+		),
+	)
+
+	return "", nil
+}
+
+func (view *VirtualMachineView) removeLabel(app *Application) (string, error) {
+	labels := set.New(view.Domain.GetVmmData().Labels...)
+
+	items := []*LabelItem{}
+	for label := range labels {
+		items = append(items, NewLabelItem("user-bookmarks-symbolic", label))
+	}
+
+	app.Push(
+		NewPrompt(
+			app,
+			"Remove VM Label",
+			"Label>",
+			true,
+			func(app *Application, entry string) {
+				info := view.Domain.GetVmmData()
+
+				// Remove the label
+				oldLabels := info.Labels
+				info.Labels = []string{}
+				for _, label := range oldLabels {
+					if label != entry {
+						info.Labels = append(info.Labels, label)
+					}
+				}
+
+				view.Domain.UpdateVmmData(info)
+				app.StatusBar.Push(
+					app.StatusBar.ContextID("label-vm"),
+					fmt.Sprintf("Remove '%v' from '%v' VM labels", entry, view.DomainName),
+				)
+				app.Pop()
+			},
+			items...,
+		),
+	)
+
 	return "", nil
 }
 

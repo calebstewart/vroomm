@@ -34,3 +34,11 @@ func (s Set[V]) Union(other Set[V]) Set[V] {
 func (s Set[V]) Remove(v V) {
 	delete(s, v)
 }
+
+func (s Set[V]) Array() []V {
+	result := make([]V, 0, len(s))
+	for v := range s {
+		result = append(result, v)
+	}
+	return result
+}

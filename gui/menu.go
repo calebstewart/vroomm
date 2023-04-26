@@ -13,7 +13,7 @@ type named interface {
 }
 
 type Item interface {
-	FilterText() string
+	Match(query string) bool
 	gtk.Widgetter
 	named
 }
@@ -83,8 +83,7 @@ func (menu *FlowboxMenu) filter(app *Application, child *gtk.FlowBoxChild) bool 
 	if item, ok := menu.items[child.Name()]; !ok {
 		return false
 	} else {
-		// Use a simple contains for now
-		result := app.Entry.Text() == "" || fuzzy.MatchFold(app.Entry.Text(), item.FilterText())
+		result := item.Match(app.Entry.Text())
 		if result && len(menu.FlowBox.SelectedChildren()) == 0 {
 			menu.FlowBox.SelectChild(child)
 		}
@@ -139,8 +138,8 @@ func NewLabelItemWithAction(icon string, text string, action func()) *LabelItem 
 	return item
 }
 
-func (item *LabelItem) FilterText() string {
-	return item.Text
+func (item *LabelItem) Match(query string) bool {
+	return fuzzy.MatchFold(query, item.Text)
 }
 
 type BrowseAllMenu struct {

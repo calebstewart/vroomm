@@ -28,10 +28,10 @@ Currently supported features:
 * Edit and apply changes to raw libvirt domain XML
 * Start `virt-viewer` or `looking-glass` for VMs.
 * Manage snapshots (create, restore, delete)
-
-Features In Progress:
 * Interactively move VMs inside the pseudo-filesystem
 * Interactively add tags/labels to VMs
+
+Features In Progress:
 * View "child" VMs which exist as clones of a single VM
 
 ## Usage
