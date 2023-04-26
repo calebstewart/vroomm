@@ -76,7 +76,7 @@ func (app *Application) Virt() *virt.Connection {
 		}
 	}
 
-	if conn, err := virt.New(app.Config.ConnectionString); err != nil {
+	if conn, err := virt.New(app.Config.ConnectionString, NewLibvirtConnectAuth(app)); err != nil {
 		logrus.WithError(err).WithField("connect_uri", app.Config.ConnectionString).Error("failed to connect to libvirt")
 		app.Quit()
 		return nil

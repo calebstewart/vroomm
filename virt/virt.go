@@ -8,12 +8,12 @@ type Connection struct {
 	*libvirt.Connect // The underlying libvirt connection
 }
 
-func New(connectionUri string) (*Connection, error) {
+func New(connectionUri string, handler *libvirt.ConnectAuth) (*Connection, error) {
 	var err error
 
 	conn := &Connection{}
 
-	conn.Connect, err = libvirt.NewConnect(connectionUri)
+	conn.Connect, err = libvirt.NewConnectWithAuth(connectionUri, handler, 0)
 	if err != nil {
 		return nil, err
 	}
