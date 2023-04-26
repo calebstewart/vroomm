@@ -38,6 +38,9 @@ func NewLibvirtConnectAuth(app *Application) *libvirt.ConnectAuth {
 			libvirt.CRED_ECHOPROMPT,
 			libvirt.CRED_NOECHOPROMPT,
 			libvirt.CRED_REALM,
+			libvirt.CRED_LANGUAGE,
+			libvirt.CRED_CNONCE,
+			libvirt.CRED_EXTERNAL,
 		},
 		Callback: func(creds []*libvirt.ConnectCredential) {
 			libvirtConnectCredentialCallback(app, creds)
