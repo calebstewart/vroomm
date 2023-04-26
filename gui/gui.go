@@ -305,9 +305,7 @@ func (app *Application) AddError(err error) {
 
 func (app *Application) PulseProgress(ctx context.Context, text string) {
 
-	app.ProgressBar.SetText(text)
-	app.ProgressBar.SetFraction(0)
-	app.ProgressBar.ShowText()
+	app.StatusBar.Push(app.StatusBar.ContextID("progress"), text)
 	app.StartProgress()
 
 	go func() {
@@ -320,17 +318,17 @@ func (app *Application) PulseProgress(ctx context.Context, text string) {
 				return
 			case <-time.After(100 * time.Millisecond):
 				glib.IdleAdd(func() {
-					app.ProgressBar.Pulse()
+					app.Entry.ProgressPulse()
 				})
 			}
 		}
 	}()
 }
 
-func (app *Application) ActivationWithPulse(activate func(app *Application) (string, error)) func() {
+func (app *Application) ActivationWithPulse(message string, activate func(app *Application) (string, error)) func() {
 	return func() {
 		ctx, cancel := context.WithCancel(context.Background())
-		app.PulseProgress(ctx, "Working...")
+		app.PulseProgress(ctx, message)
 
 		go func() {
 			status, err := activate(app)
@@ -359,13 +357,11 @@ func (app *Application) Activation(activate func(app *Application) (string, erro
 }
 
 func (app *Application) StartProgress() {
-	app.StatusBar.Hide()
-	app.ProgressBar.Show()
+	app.Entry.ProgressPulse()
 }
 
 func (app *Application) StopProgress() {
-	app.ProgressBar.Hide()
-	app.StatusBar.Show()
+	app.Entry.SetProgressFraction(0)
 }
 
 // Push a new view onto the GtkStack

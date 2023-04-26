@@ -84,18 +84,18 @@ func (view *VirtualMachineView) updateView(app *Application) error {
 		fallthrough
 	case libvirt.DOMAIN_RUNNING:
 		prettyState = "Running"
-		view.CreateItem(app, "computer-symbolic", "Open Viewer", app.ActivationWithPulse(view.openViewer))
-		view.CreateItem(app, "system-search-symbolic", "Open Looking Glass", app.ActivationWithPulse(view.openLookingGlass))
-		view.CreateItem(app, "system-shutdown-symbolic", "Shutdown", app.ActivationWithPulse(view.shutDown))
-		view.CreateItem(app, "face-shutmouth-symbolic", "Force Off", app.ActivationWithPulse(view.forceOff))
-		view.CreateItem(app, "media-floppy-symbolic", "Save State", app.ActivationWithPulse(view.saveState))
+		view.CreateItem(app, "computer-symbolic", "Open Viewer", app.ActivationWithPulse("Opening with virt-viewer...", view.openViewer))
+		view.CreateItem(app, "system-search-symbolic", "Open Looking Glass", app.ActivationWithPulse("Opening with looking-glass...", view.openLookingGlass))
+		view.CreateItem(app, "system-shutdown-symbolic", "Shutdown", app.ActivationWithPulse("Requesting VM Shutdown...", view.shutDown))
+		view.CreateItem(app, "face-shutmouth-symbolic", "Force Off", app.ActivationWithPulse("Forcing VM Off...", view.forceOff))
+		view.CreateItem(app, "media-floppy-symbolic", "Save State", app.ActivationWithPulse("Saving VM State...", view.saveState))
 	case libvirt.DOMAIN_CRASHED:
 		fallthrough
 	case libvirt.DOMAIN_SHUTOFF:
 		fallthrough
 	case libvirt.DOMAIN_SHUTDOWN:
 		prettyState = "Off"
-		view.CreateItem(app, "media-playback-start-symbolic", "Start", app.ActivationWithPulse(view.start))
+		view.CreateItem(app, "media-playback-start-symbolic", "Start", app.ActivationWithPulse("Starting VM...", view.start))
 	}
 
 	view.CreateItem(app, "edit-copy-symbolic", "Linked Clone", app.Activation(view.linkedClone))
@@ -103,10 +103,10 @@ func (view *VirtualMachineView) updateView(app *Application) error {
 	view.CreateItem(app, "camera-photo-symbolic", "Take Snapshot", app.Activation(view.snapshot))
 	view.CreateItem(app, "document-open-recent-symbolic", "Restore Snapshot", app.Activation(view.restoreSnapshot))
 	view.CreateItem(app, "user-trash-symbolic", "Delete Snapshot", app.Activation(view.deleteSnapshot))
-	view.CreateItem(app, "folder-symbolic", "Move To...", app.ActivationWithPulse(view.move))
-	view.CreateItem(app, "user-bookmarks-symbolic", "Add Label", app.ActivationWithPulse(view.addLabel))
+	view.CreateItem(app, "folder-symbolic", "Move To...", app.Activation(view.move))
+	view.CreateItem(app, "user-bookmarks-symbolic", "Add Label", app.Activation(view.addLabel))
 	view.CreateItem(app, "user-bookmarks-symbolic", "Remove Label", app.Activation(view.removeLabel))
-	view.CreateItem(app, "document-edit-symbolic", "Edit XML", app.ActivationWithPulse(view.editXML))
+	view.CreateItem(app, "document-edit-symbolic", "Edit XML", app.ActivationWithPulse("Opening VM XML w/ xdg-open...", view.editXML))
 
 	if selectedIndex > -1 {
 		child := view.FlowBoxMenu.FlowBox.ChildAtIndex(selectedIndex)
@@ -273,21 +273,24 @@ func (view *VirtualMachineView) linkedClone(app *Application) (string, error) {
 			return
 		}
 
-		app.ActivationWithPulse(func(app *Application) (string, error) {
-			domain, err := view.Domain.Clone(app.Virt(), name, true)
-			if err != nil {
-				return "", err
-			}
+		app.ActivationWithPulse(
+			"Creating linked VM clone...",
+			func(app *Application) (string, error) {
+				domain, err := view.Domain.Clone(app.Virt(), name, true)
+				if err != nil {
+					return "", err
+				}
 
-			domainView, err := NewVirtualMachineView(app, domain)
-			if err == nil {
-				glib.IdleAdd(func() {
-					app.ReplaceTop(domainView)
-				})
-			}
+				domainView, err := NewVirtualMachineView(app, domain)
+				if err == nil {
+					glib.IdleAdd(func() {
+						app.ReplaceTop(domainView)
+					})
+				}
 
-			return fmt.Sprintf("Virtual Machine '%v' Cloned to '%v'", view.DomainName, name), nil
-		})()
+				return fmt.Sprintf("Virtual Machine '%v' Cloned to '%v'", view.DomainName, name), nil
+			},
+		)()
 	})
 
 	app.Push(prompt)
@@ -303,21 +306,24 @@ func (view *VirtualMachineView) fullClone(app *Application) (string, error) {
 			return
 		}
 
-		app.ActivationWithPulse(func(app *Application) (string, error) {
-			domain, err := view.Domain.Clone(app.Virt(), name, true)
-			if err != nil {
-				return "", err
-			}
+		app.ActivationWithPulse(
+			"Creating full VM clone...",
+			func(app *Application) (string, error) {
+				domain, err := view.Domain.Clone(app.Virt(), name, true)
+				if err != nil {
+					return "", err
+				}
 
-			domainView, err := NewVirtualMachineView(app, domain)
-			if err == nil {
-				glib.IdleAdd(func() {
-					app.ReplaceTop(domainView)
-				})
-			}
+				domainView, err := NewVirtualMachineView(app, domain)
+				if err == nil {
+					glib.IdleAdd(func() {
+						app.ReplaceTop(domainView)
+					})
+				}
 
-			return fmt.Sprintf("Virtual Machine '%v' Cloned to '%v'", view.DomainName, name), nil
-		})()
+				return fmt.Sprintf("Virtual Machine '%v' Cloned to '%v'", view.DomainName, name), nil
+			},
+		)()
 	})
 
 	app.Push(prompt)
@@ -412,19 +418,22 @@ func (view *VirtualMachineView) deleteSnapshot(app *Application) (string, error)
 				return
 			}
 
-			app.ActivationWithPulse(func(app *Application) (string, error) {
-				if domainName, err := domain.GetName(); err != nil {
-					return "", err
-				} else if err := snapshot.Delete(0); err != nil {
-					return "", err
-				} else {
-					return fmt.Sprintf(
-						"Deleted Snapshot '%v' from Virtual Machine '%v'",
-						snapshotName,
-						domainName,
-					), err
-				}
-			})()
+			app.ActivationWithPulse(
+				"Deleting VM snapshot...",
+				func(app *Application) (string, error) {
+					if domainName, err := domain.GetName(); err != nil {
+						return "", err
+					} else if err := snapshot.Delete(0); err != nil {
+						return "", err
+					} else {
+						return fmt.Sprintf(
+							"Deleted Snapshot '%v' from Virtual Machine '%v'",
+							snapshotName,
+							domainName,
+						), err
+					}
+				},
+			)()
 		}),
 	)
 
@@ -443,19 +452,22 @@ func (view *VirtualMachineView) restoreSnapshot(app *Application) (string, error
 				return
 			}
 
-			app.ActivationWithPulse(func(app *Application) (string, error) {
-				if domainName, err := domain.GetName(); err != nil {
-					return "", err
-				} else if err := snapshot.RevertToSnapshot(0); err != nil {
-					return "", err
-				} else {
-					return fmt.Sprintf(
-						"Virtual Machine '%v' reverted to snapshot '%v'",
-						domainName,
-						snapshotName,
-					), nil
-				}
-			})()
+			app.ActivationWithPulse(
+				"Restoring VM snapshot...",
+				func(app *Application) (string, error) {
+					if domainName, err := domain.GetName(); err != nil {
+						return "", err
+					} else if err := snapshot.RevertToSnapshot(0); err != nil {
+						return "", err
+					} else {
+						return fmt.Sprintf(
+							"Virtual Machine '%v' reverted to snapshot '%v'",
+							domainName,
+							snapshotName,
+						), nil
+					}
+				},
+			)()
 		}),
 	)
 
