@@ -32,6 +32,12 @@ Currently supported features:
 * Interactively add tags/labels to VMs
 
 Features In Progress:
+* Transition to using `libvirt.NewConnectWithAuth` to properly support
+  username, password and passphrase prompts. Currently, they happen via
+  `stdin` which does not work when using a keyboard shortcut, and is
+  blocked by the `wlr-layer-shell` interface even if executed from a
+  terminal. This is mainly an issue for remote connections that use
+  user/password or an SSH key with a passphrase.
 * View "child" VMs which exist as clones of a single VM
 
 ## Usage
@@ -97,3 +103,13 @@ That being said, if you're just tinkering around with your personal VMs
 and want to give it a go, that's awesome. If you find any odd errors,
 please let me know through an issue here. I probably just haven't tested
 the case you're running into. :)
+
+### Known Issues
+Given the above disclaimer, the following known issues exist:
+* Libvirt connections requiring interactive authentication are not
+  fully supported. Libvirt prompts for credentials by default via
+  stdin, which does not jive well with a GUI application or at all
+  with `wlr-layer-shell`. This does not affect local execution where
+  the current user has permission to use `libvirt` directly, but
+  does mostly prevent remote execution (unless using SSH w/ a username
+  configured in `~/.ssh/config` and an SSH key without a passphrase).
