@@ -44,6 +44,7 @@ type Application struct {
 	Config           *config.Config         // Application configuration
 	Builder          *gtk.Builder           // Builder that holds the primary widgets
 	Window           *gtk.ApplicationWindow // Application Window
+	RootBox          *gtk.Box               // The root gtk.Box holding all window widgets
 	Prompt           *gtk.Label             // Prompt label
 	Entry            *gtk.Entry             // Entry widget where the user interacts
 	ViewTitle        *gtk.Label             // Label showing the view path
@@ -148,6 +149,7 @@ func (app *Application) activate() {
 	app.ViewTitle = app.Builder.GetObject("view-title").Cast().(*gtk.Label)
 	app.Stack = app.Builder.GetObject("view").Cast().(*gtk.Stack)
 	app.StatusBar = app.Builder.GetObject("status").Cast().(*gtk.Statusbar)
+	app.RootBox = app.Builder.GetObject("root").Cast().(*gtk.Box)
 
 	// Progress bar is only shown when needed
 	app.ProgressBar = app.Builder.GetObject("progress").Cast().(*gtk.ProgressBar)
@@ -283,7 +285,22 @@ func (app *Application) keyPressEvent(event *gdk.EventKey) bool {
 
 // Add an error to the message box
 func (app *Application) AddError(err error) {
-	logrus.Errorf("view error: %v", err)
+	// Display the error at the terminal
+	logrus.WithError(err).Errorf("View encountered an error")
+
+	// Create an info box in the window as well
+	infoBar := gtk.NewInfoBar()
+	infoBar.SetMessageType(gtk.MessageError)
+	infoBar.ContentArea().Add(gtk.NewImageFromIconName("dialog-error-symbolic", int(gtk.IconSizeLargeToolbar)))
+	infoBar.ContentArea().Add(gtk.NewLabel(err.Error()))
+	infoBar.AddButton("_OK", int(gtk.ResponseOK))
+	infoBar.ConnectResponse(func(_ int) {
+		infoBar.Destroy()
+	})
+	infoBar.ShowAll()
+
+	// Add the info box to the window
+	app.RootBox.PackStart(infoBar, false, false, 0)
 }
 
 func (app *Application) PulseProgress(ctx context.Context, text string) {
