@@ -245,6 +245,7 @@ func (app *Application) updateWindowGeometry(_ *gtk.ApplicationWindow) bool {
 		if currentWidth != width || currentHeight != height {
 			logrus.Infof("screen %vx%v, resizing from %vx%v to %vx%v", monitor.Width(), monitor.Height(), currentWidth, currentHeight, width, height)
 			app.Window.SetSizeRequest(width, height)
+			app.Window.SetResizable(false)
 		}
 	}
 
