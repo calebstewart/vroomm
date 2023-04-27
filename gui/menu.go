@@ -170,7 +170,7 @@ func (menu *MainMenu) Enter(app *Application) error {
 	go func() {
 		virtConn := app.Virt()
 		if domains, err := virtConn.EnumerateActiveDomains(); err != nil {
-			app.AddError(err)
+			app.Logger.Error(err.Error())
 			cancel()
 			return
 		} else {
@@ -178,11 +178,13 @@ func (menu *MainMenu) Enter(app *Application) error {
 				defer cancel()
 				for _, domain := range domains {
 					if item, err := NewVirtualMachineItem(app, domain); err != nil {
-						app.AddError(err)
+						app.Logger.Error(err.Error())
 					} else {
 						menu.Add(item)
 					}
 				}
+
+				app.Logger.Infof("Loaded %v active VMs", len(domains))
 			})
 		}
 	}()

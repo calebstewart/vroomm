@@ -57,12 +57,12 @@ func (menu *BrowseAllView) Enter(app *Application) error {
 	go func() {
 		virt := app.Virt()
 		if domains, err := virt.EnumerateAllDomains(); err != nil {
-			app.AddError(err)
+			app.Logger.Error(err.Error())
 		} else {
 			glib.IdleAdd(func() {
 				for _, domain := range domains {
 					if item, err := NewVirtualMachineItem(app, domain); err != nil {
-						app.AddError(err)
+						app.Logger.Error(err.Error())
 					} else {
 						item.ShowAll()
 						menu.Add(item)
@@ -106,7 +106,7 @@ func (menu *BrowseFolderView) Enter(app *Application) error {
 	go func() {
 		virtConn := app.Virt()
 		if domains, err := virtConn.EnumerateAllDomains(); err != nil {
-			app.AddError(err)
+			app.Logger.Error(err.Error())
 		} else {
 			glib.IdleAdd(func() {
 
@@ -150,7 +150,7 @@ func (menu *BrowseFolderView) Enter(app *Application) error {
 
 				for _, domain := range directDomains {
 					if item, err := NewVirtualMachineItem(app, domain); err != nil {
-						app.AddError(err)
+						app.Logger.Error(err.Error())
 					} else {
 						item.ShowAll()
 						menu.Add(item)
@@ -203,7 +203,7 @@ func (view *LabelsView) Enter(app *Application) error {
 	go func() {
 		virtConn := app.Virt()
 		if domains, err := virtConn.EnumerateAllDomains(); err != nil {
-			app.AddError(err)
+			app.Logger.Error(err.Error())
 		} else {
 			// Collect all valid labels from all domains
 			labels := set.Set[string]{}
@@ -257,7 +257,7 @@ func (view *BrowseLabelView) Enter(app *Application) error {
 	go func() {
 		virtConn := app.Virt()
 		if domains, err := virtConn.EnumerateAllDomains(); err != nil {
-			app.AddError(err)
+			app.Logger.Error(err.Error())
 		} else {
 			glib.IdleAdd(func() {
 				// Collect all direct domains and potential child folders
@@ -269,7 +269,7 @@ func (view *BrowseLabelView) Enter(app *Application) error {
 					if labels.Has(view.Label) {
 						item, err := NewVirtualMachineItem(app, domain)
 						if err != nil {
-							app.AddError(err)
+							app.Logger.Error(err.Error())
 						} else {
 							view.Add(item)
 						}

@@ -35,7 +35,7 @@ func (view *SnapshotListView) Enter(app *Application) error {
 
 	go func() {
 		if snapshots, err := view.Domain.SnapshotListNames(0); err != nil {
-			app.AddError(err)
+			app.Logger.Error(err)
 		} else {
 			glib.IdleAdd(func() {
 				for _, name := range snapshots {

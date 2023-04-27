@@ -13,7 +13,7 @@ func NewVirtualMachineItem(app *Application, domain *virt.Domain) (*LabelItem, e
 			domainName,
 			func() {
 				if view, err := NewVirtualMachineView(app, domain); err != nil {
-					app.AddError(err)
+					app.Logger.Error(err)
 				} else {
 					app.Push(view)
 				}

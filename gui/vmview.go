@@ -148,7 +148,7 @@ func (view *VirtualMachineView) Enter(app *Application) error {
 				glib.IdleAdd(func() {
 					err := view.updateView(app)
 					if err != nil {
-						app.AddError(err)
+						app.Logger.Error(err)
 					}
 				})
 			}
@@ -269,7 +269,7 @@ func (view *VirtualMachineView) linkedClone(app *Application) (string, error) {
 	prompt := NewPrompt(app, "Linked Clone", "Clone Name>", false, func(app *Application, name string) {
 		conn := app.Virt()
 		if _, err := conn.LookupDomainByName(name); err == nil {
-			app.AddError(fmt.Errorf("Virtual Machine '%v' already exists", name))
+			app.Logger.Errorf("Virtual Machine '%v' already exists", name)
 			return
 		}
 
@@ -302,7 +302,7 @@ func (view *VirtualMachineView) fullClone(app *Application) (string, error) {
 	prompt := NewPrompt(app, "Full Clone", "Clone Name>", false, func(app *Application, name string) {
 		conn := app.Virt()
 		if _, err := conn.LookupDomainByName(name); err == nil {
-			app.AddError(fmt.Errorf("Virtual Machine '%v' already exists", name))
+			app.Logger.Errorf("Virtual Machine '%v' already exists", name)
 			return
 		}
 
@@ -361,10 +361,10 @@ func (view *VirtualMachineView) doSnapshot(app *Application, name string) {
 
 		domainDescription := libvirtxml.Domain{}
 		if xmlDescr, err := view.Domain.GetXMLDesc(libvirt.DOMAIN_XML_SECURE); err != nil {
-			glib.IdleAdd(func() { app.AddError(err) })
+			app.Logger.Error(err)
 			return
 		} else if err := xml.Unmarshal([]byte(xmlDescr), &domainDescription); err != nil {
-			glib.IdleAdd(func() { app.AddError(err) })
+			app.Logger.Error(err)
 			return
 		}
 
@@ -391,16 +391,11 @@ func (view *VirtualMachineView) doSnapshot(app *Application, name string) {
 		}
 
 		if snapshotXml, err := xml.Marshal(&domainSnapshot); err != nil {
-			glib.IdleAdd(func() { app.AddError(err) })
+			app.Logger.Error(err.Error())
 		} else if _, err := view.Domain.CreateSnapshotXML(string(snapshotXml), 0); err != nil {
-			glib.IdleAdd(func() { app.AddError(err) })
+			app.Logger.Error(err.Error())
 		} else {
-			glib.IdleAdd(func() {
-				app.StatusBar.Push(
-					app.StatusBar.ContextID("snapshot"),
-					fmt.Sprintf("Created Snapshot '%v' of '%v'", name, domainDescription.Name),
-				)
-			})
+			app.Logger.Infof("Created Snapshot '%v' of '%v'", name, domainDescription.Name)
 		}
 	}()
 }
@@ -414,7 +409,7 @@ func (view *VirtualMachineView) deleteSnapshot(app *Application) (string, error)
 
 			snapshot, err := domain.SnapshotLookupByName(snapshotName, 0)
 			if err != nil {
-				app.AddError(err)
+				app.Logger.Error(err)
 				return
 			}
 
@@ -448,7 +443,7 @@ func (view *VirtualMachineView) restoreSnapshot(app *Application) (string, error
 
 			snapshot, err := domain.SnapshotLookupByName(snapshotName, 0)
 			if err != nil {
-				app.AddError(err)
+				app.Logger.Error(err)
 				return
 			}
 
@@ -503,10 +498,7 @@ func (view *VirtualMachineView) move(app *Application) (string, error) {
 				info := view.Domain.GetVmmData()
 				info.Path = strings.TrimSuffix(entry, "/") + "/"
 				view.Domain.UpdateVmmData(info)
-				app.StatusBar.Push(
-					app.StatusBar.ContextID("move-vm"),
-					fmt.Sprintf("Moved '%v' to '%v'", view.DomainName, info.Path),
-				)
+				app.Logger.Infof("Moved '%v' to '%v'", view.DomainName, info.Path)
 				app.Pop()
 			},
 			items...,
@@ -554,10 +546,7 @@ func (view *VirtualMachineView) addLabel(app *Application) (string, error) {
 
 				view.Domain.UpdateVmmData(info)
 
-				app.StatusBar.Push(
-					app.StatusBar.ContextID("label-vm"),
-					fmt.Sprintf("Added label '%v' to VM '%v'", entry, view.DomainName),
-				)
+				app.Logger.Infof("Added lable '%v' to VM '%v'", entry, view.DomainName)
 				app.Pop()
 			},
 			items...,
@@ -594,10 +583,8 @@ func (view *VirtualMachineView) removeLabel(app *Application) (string, error) {
 				}
 
 				view.Domain.UpdateVmmData(info)
-				app.StatusBar.Push(
-					app.StatusBar.ContextID("label-vm"),
-					fmt.Sprintf("Remove '%v' from '%v' VM labels", entry, view.DomainName),
-				)
+
+				app.Logger.Infof("Removed VM label '%v' from '%v'", entry, view.DomainName)
 				app.Pop()
 			},
 			items...,

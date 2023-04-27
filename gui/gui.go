@@ -3,6 +3,7 @@ package gui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,10 +50,11 @@ type Application struct {
 	Entry            *gtk.Entry             // Entry widget where the user interacts
 	ViewTitle        *gtk.Label             // Label showing the view path
 	Stack            *gtk.Stack             // View stack
-	StatusBar        *gtk.Statusbar         // Status bar at bottom of window
-	ProgressBar      *gtk.ProgressBar       // The progress bar displayed at the bottom of the window
 	MessageBox       *gtk.Box               // A box which contains error or warning messages
 	Views            []View                 // Slice of views currently in the stack
+	Logger           *logrus.Logger         // A logger used to dump console and GUI logs
+	LogView          *LogView               // A view that displays log entries interactively
+	InfoBar          *gtk.InfoBar           // The info bar displaying the most recent log message
 	virtConn         *virt.Connection       // Libvirt connection object
 	*gtk.Application                        // GTK Application
 }
@@ -62,6 +64,7 @@ func NewApplication(cfg *config.Config) *Application {
 		Config:      cfg,
 		Application: gtk.NewApplication(VroommApplicationId, gio.ApplicationFlagsNone),
 		Views:       make([]View, 0),
+		Logger:      logrus.StandardLogger(),
 	}
 
 	app.ConnectActivate(app.activate)
@@ -148,12 +151,19 @@ func (app *Application) activate() {
 	app.Entry = app.Builder.GetObject("input").Cast().(*gtk.Entry)
 	app.ViewTitle = app.Builder.GetObject("view-title").Cast().(*gtk.Label)
 	app.Stack = app.Builder.GetObject("view").Cast().(*gtk.Stack)
-	app.StatusBar = app.Builder.GetObject("status").Cast().(*gtk.Statusbar)
 	app.RootBox = app.Builder.GetObject("root").Cast().(*gtk.Box)
 
-	// Progress bar is only shown when needed
-	app.ProgressBar = app.Builder.GetObject("progress").Cast().(*gtk.ProgressBar)
-	app.ProgressBar.Hide()
+	// Create a view for the logs
+	app.LogView = NewLogView()
+
+	// Create the info bar. It is only shown when there's a message to show.
+	app.InfoBar = gtk.NewInfoBar()
+	app.InfoBar.ContentArea().PackStart(gtk.NewLabel("Ready..."), true, true, 0)
+	app.InfoBar.AddButton("Logs", int(gtk.ResponseOK))
+	app.InfoBar.ConnectResponse(func(_ int) {
+		app.Push(app.LogView)
+	})
+	app.RootBox.PackStart(app.InfoBar, false, false, 0)
 
 	// Setup wlr-layer-shell if requested
 	if app.Config.LayerShell.Enabled {
@@ -171,9 +181,13 @@ func (app *Application) activate() {
 	// Handle escape globally so we can exit out of views
 	app.Window.ConnectKeyPressEvent(app.keyPressEvent)
 
+	// Ensure that modifying the entry invalidates any filters applied
+	// in the view
 	app.Entry.ConnectChanged(func() {
 		app.Top().InvalidateFilter()
 	})
+
+	app.Logger.AddHook(app)
 
 	// Setup the initial menu view
 	mainMenu := NewMainMenu()
@@ -261,6 +275,12 @@ func (app *Application) keyPressEvent(event *gdk.EventKey) bool {
 			app.Pop()
 		}
 		return true
+	} else if event.Keyval() == gdk.KEY_l && event.State().Has(gdk.ControlMask) {
+		if app.Top() != app.LogView {
+			app.Push(app.LogView)
+		} else {
+			app.Pop()
+		}
 	} else if app.Entry.HasFocus() {
 		// The entry has focus
 		if event.Keyval() == gdk.KEY_Return {
@@ -283,29 +303,53 @@ func (app *Application) keyPressEvent(event *gdk.EventKey) bool {
 	return false
 }
 
-// Add an error to the message box
-func (app *Application) AddError(err error) {
-	// Display the error at the terminal
-	logrus.WithError(err).Errorf("View encountered an error")
+func (app *Application) Levels() []logrus.Level {
+	return logrus.AllLevels
+}
 
-	// Create an info box in the window as well
-	infoBar := gtk.NewInfoBar()
-	infoBar.SetMessageType(gtk.MessageError)
-	infoBar.ContentArea().Add(gtk.NewImageFromIconName("dialog-error-symbolic", int(gtk.IconSizeLargeToolbar)))
-	infoBar.ContentArea().Add(gtk.NewLabel(err.Error()))
-	infoBar.AddButton("_OK", int(gtk.ResponseOK))
-	infoBar.ConnectResponse(func(_ int) {
-		infoBar.Destroy()
+func (app *Application) Fire(entry *logrus.Entry) error {
+
+	glib.IdleAdd(func() {
+		buffer := app.LogView.Widget().Cast().(*gtk.TextView).Buffer()
+		buffer.Insert(
+			buffer.EndIter(),
+			fmt.Sprintf(
+				"[%v] %v - %v\n",
+				entry.Time.Format(time.RFC3339),
+				entry.Level.String(),
+				entry.Message,
+			),
+		)
+
+		box := app.InfoBar.ContentArea()
+		for _, child := range box.Children() {
+			box.Remove(child)
+		}
+
+		iconName := "dialog-information"
+		if entry.Level == logrus.ErrorLevel || entry.Level == logrus.FatalLevel || entry.Level == logrus.PanicLevel {
+			iconName = "dialog-error"
+			app.InfoBar.SetMessageType(gtk.MessageError)
+		} else if entry.Level == logrus.WarnLevel {
+			iconName = "dialog-warning"
+			app.InfoBar.SetMessageType(gtk.MessageWarning)
+		} else {
+			app.InfoBar.SetMessageType(gtk.MessageInfo)
+		}
+
+		box.Add(gtk.NewImageFromIconName(iconName, int(gtk.IconSizeSmallToolbar)))
+		box.Add(gtk.NewLabel(entry.Message))
+
+		app.InfoBar.Hide()
+		app.InfoBar.ShowAll()
 	})
-	infoBar.ShowAll()
 
-	// Add the info box to the window
-	app.RootBox.PackStart(infoBar, false, false, 0)
+	return nil
 }
 
 func (app *Application) PulseProgress(ctx context.Context, text string) {
 
-	app.StatusBar.Push(app.StatusBar.ContextID("progress"), text)
+	app.Logger.Info(text)
 	app.StartProgress()
 
 	go func() {
@@ -336,9 +380,9 @@ func (app *Application) ActivationWithPulse(message string, activate func(app *A
 
 			glib.IdleAdd(func() {
 				if err != nil {
-					app.AddError(err)
+					app.Logger.Error(err.Error())
 				} else {
-					app.StatusBar.Push(app.StatusBar.ContextID(status), status)
+					app.Logger.Info(status)
 				}
 			})
 		}()
@@ -349,9 +393,9 @@ func (app *Application) Activation(activate func(app *Application) (string, erro
 	return func() {
 		status, err := activate(app)
 		if err != nil {
-			app.AddError(err)
-		} else {
-			app.StatusBar.Push(app.StatusBar.ContextID(status), status)
+			app.Logger.Error(err.Error())
+		} else if status != "" {
+			app.Logger.Info(status)
 		}
 	}
 }
@@ -369,9 +413,13 @@ func (app *Application) Push(view View) {
 	// Grab the current view
 	current := app.Top()
 
+	if view == app.LogView && current == app.LogView {
+		return
+	}
+
 	// Ensure we can leave this view
 	if err := current.Leave(app); err != nil {
-		app.AddError(err)
+		app.Logger.Error(err.Error())
 		return
 	}
 
@@ -382,14 +430,20 @@ func (app *Application) Push(view View) {
 	app.Views = append(app.Views, view)
 
 	// Transition to the new view
-	app.Stack.SetVisibleChildFull(view.Name(), gtk.StackTransitionTypeSlideLeft)
+	view.Widget().ShowAll()
+
+	transitionType := gtk.StackTransitionTypeSlideLeft
+	if view == app.LogView {
+		transitionType = gtk.StackTransitionTypeSlideUp
+	}
+	app.Stack.SetVisibleChildFull(view.Name(), transitionType)
 
 	app.updateViewTitle()
 	app.Prompt.SetText("VM Manager>")
 
 	// Notify the view of the new focus
 	if err := view.Enter(app); err != nil {
-		app.AddError(err)
+		app.Logger.Error(err.Error())
 	}
 
 	// Reset the input box
@@ -409,7 +463,7 @@ func (app *Application) ReplaceTop(view View) {
 	// Attempt to close the current view
 	if err := current.Close(app); err != nil {
 		// There was a problem, so leave the view open
-		app.AddError(err)
+		app.Logger.Error(err.Error())
 		return
 	}
 
@@ -442,7 +496,7 @@ func (app *Application) ReplaceTop(view View) {
 
 	// Notify the view of the new focus
 	if err := view.Enter(app); err != nil {
-		app.AddError(err)
+		app.Logger.Error(err.Error())
 	}
 
 	// Reset the input box
@@ -457,7 +511,7 @@ func (app *Application) PopNoTransition() View {
 	// Attempt to close the current view
 	if err := current.Close(app); err != nil {
 		// There was a problem, so leave the view open
-		app.AddError(err)
+		app.Logger.Error(err.Error())
 		return current
 	}
 
@@ -479,7 +533,7 @@ func (app *Application) PopNoTransition() View {
 	app.Prompt.SetText("VM Manager>")
 
 	if err := newCurrent.Enter(app); err != nil {
-		app.AddError(err)
+		app.Logger.Error(err.Error())
 	}
 
 	// Reset the input box
@@ -498,7 +552,7 @@ func (app *Application) Pop() View {
 	// Attempt to close the current view
 	if err := current.Close(app); err != nil {
 		// There was a problem, so leave the view open
-		app.AddError(err)
+		app.Logger.Error(err.Error())
 		return current
 	}
 
@@ -513,7 +567,12 @@ func (app *Application) Pop() View {
 
 	// Transition to the new view
 	newCurrent := app.Top()
-	app.Stack.SetVisibleChildFull(newCurrent.Name(), gtk.StackTransitionTypeSlideRight)
+
+	transitionType := gtk.StackTransitionTypeSlideRight
+	if current == app.LogView {
+		transitionType = gtk.StackTransitionTypeSlideDown
+	}
+	app.Stack.SetVisibleChildFull(newCurrent.Name(), transitionType)
 
 	// Delete the old view after the transition is complete
 	var signalHandle glib.SignalHandle
@@ -534,7 +593,7 @@ func (app *Application) Pop() View {
 	app.Prompt.SetText("VM Manager>")
 
 	if err := newCurrent.Enter(app); err != nil {
-		app.AddError(err)
+		app.Logger.Error(err.Error())
 	}
 
 	// Reset the input box
