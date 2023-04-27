@@ -55,6 +55,7 @@ type Application struct {
 	Logger           *logrus.Logger         // A logger used to dump console and GUI logs
 	LogView          *LogView               // A view that displays log entries interactively
 	InfoBar          *gtk.InfoBar           // The info bar displaying the most recent log message
+	ViewLock         sync.Mutex             // A lock for switching views
 	virtConn         *virt.Connection       // Libvirt connection object
 	*gtk.Application                        // GTK Application
 }
@@ -208,11 +209,13 @@ func (app *Application) activate() {
 		// every millisecond for up to 1 second, and then quits. It works, but I'm not happy
 		// about it.
 		go func() {
+			ctx, _ := context.WithTimeout(context.Background(), time.Second)
 			for {
 				select {
 				case <-time.After(time.Millisecond):
 					app.updateWindowGeometry(app.Window)
-				case <-time.After(time.Second):
+				case <-ctx.Done():
+					app.Logger.Info("geometry thread exiting")
 					return
 				}
 			}
@@ -411,16 +414,23 @@ func (app *Application) StopProgress() {
 
 // Push a new view onto the GtkStack
 func (app *Application) Push(view View) {
+
+	if !app.ViewLock.TryLock() {
+		return
+	}
+
 	// Grab the current view
 	current := app.Top()
 
 	if view == app.LogView && current == app.LogView {
+		app.ViewLock.Unlock()
 		return
 	}
 
 	// Ensure we can leave this view
 	if err := current.Leave(app); err != nil {
 		app.Logger.Error(err.Error())
+		app.ViewLock.Unlock()
 		return
 	}
 
@@ -450,6 +460,13 @@ func (app *Application) Push(view View) {
 	// Reset the input box
 	app.Entry.SetText("")
 	app.Window.SetFocus(app.Entry)
+
+	go func() {
+		for app.Stack.TransitionRunning() {
+			time.Sleep(time.Millisecond * 10)
+		}
+		app.ViewLock.Unlock()
+	}()
 }
 
 // Return the current view
@@ -458,6 +475,10 @@ func (app *Application) Top() View {
 }
 
 func (app *Application) ReplaceTop(view View) {
+	if !app.ViewLock.TryLock() {
+		return
+	}
+
 	// Return the current view
 	current := app.Top()
 
@@ -465,6 +486,7 @@ func (app *Application) ReplaceTop(view View) {
 	if err := current.Close(app); err != nil {
 		// There was a problem, so leave the view open
 		app.Logger.Error(err.Error())
+		app.ViewLock.Unlock()
 		return
 	}
 
@@ -490,6 +512,7 @@ func (app *Application) ReplaceTop(view View) {
 		defer lock.Unlock()
 		app.Stack.Remove(current)
 		app.Stack.HandlerDisconnect(*pSignalHandle)
+		app.ViewLock.Unlock()
 	})
 
 	app.updateViewTitle()
@@ -505,21 +528,28 @@ func (app *Application) ReplaceTop(view View) {
 	app.Window.SetFocus(app.Entry)
 }
 
-func (app *Application) PopNoTransition() View {
+func (app *Application) PopNoTransition() {
+
+	if !app.ViewLock.TryLock() {
+		return
+	}
+
 	// Return the current view
 	current := app.Top()
+
+	defer app.ViewLock.Unlock()
 
 	// Attempt to close the current view
 	if err := current.Close(app); err != nil {
 		// There was a problem, so leave the view open
 		app.Logger.Error(err.Error())
-		return current
+		return
 	}
 
 	// No more views to display, so we exit
 	if len(app.Views) == 1 {
 		app.Quit()
-		return nil
+		return
 	}
 
 	// Remove the top view
@@ -540,12 +570,13 @@ func (app *Application) PopNoTransition() View {
 	// Reset the input box
 	app.Entry.SetText("")
 	app.Window.SetFocus(app.Entry)
-
-	return newCurrent
 }
 
 // Remove the current view and transition to the previous
-func (app *Application) Pop() View {
+func (app *Application) Pop() {
+	if !app.ViewLock.TryLock() {
+		return
+	}
 
 	// Return the current view
 	current := app.Top()
@@ -554,13 +585,15 @@ func (app *Application) Pop() View {
 	if err := current.Close(app); err != nil {
 		// There was a problem, so leave the view open
 		app.Logger.Error(err.Error())
-		return current
+		app.ViewLock.Unlock()
+		return
 	}
 
 	// No more views to display, so we exit
 	if len(app.Views) == 1 {
 		app.Quit()
-		return nil
+		app.ViewLock.Unlock()
+		return
 	}
 
 	// Remove the top view
@@ -588,6 +621,7 @@ func (app *Application) Pop() View {
 		defer lock.Unlock()
 		app.Stack.Remove(current)
 		app.Stack.HandlerDisconnect(*pSignalHandle)
+		app.ViewLock.Unlock()
 	})
 
 	app.updateViewTitle()
@@ -600,6 +634,4 @@ func (app *Application) Pop() View {
 	// Reset the input box
 	app.Entry.SetText("")
 	app.Window.SetFocus(app.Entry)
-
-	return newCurrent
 }
