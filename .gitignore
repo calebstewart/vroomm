@@ -24,3 +24,5 @@ go.work
 vroomm
 
 dist/
+
+*.glade~
