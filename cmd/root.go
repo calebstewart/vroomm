@@ -27,8 +27,12 @@ import (
 	"path/filepath"
 
 	"github.com/adrg/xdg"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/calebstewart/vroomm/config"
+	"github.com/calebstewart/vroomm/gui"
 )
 
 var cfgFile string
@@ -36,14 +40,39 @@ var cfgFile string
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   os.Args[0],
-	Short: "Simple libvirt Virtual Machine Manager",
-	Long: `Manage, interact and organize Virtual Machines (or 'domains') within
-a local or remote libvirt hypervisor. Vroomm  supports a terminal UI
-as well as a GTK3 interface based on gtk-layer-shell and menu
-systems such as Rofi.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) {},
+	Short: "GTK-based Graphical Virtual Machine Manager",
+	Long: `Opens the virtual machine manager as a graphical GTK3-based application.
+The application optionally supports wlr-layer-shell protocols through gtk-layer-shell,
+and is primarily intended to be used in this way (i.e. as a pop-up VM manager
+integrated in your DE as a keyboard shortcut).
+
+The interface is very similar to tools like Dmenu, Rofi or Wofi, and should be
+relatively intuitive. Typing will always focus the text input with the exception
+of the up/down arrows which select items in the appropriate menu, the enter key
+which accepts the current menu or item selection, and escape. Escape alone will
+navigate backwards through the menu tree. Pressing Shift+Escape will exit the
+application immediately.
+
+This application was built for my own use, and is not heavily tested. If you
+don't know what you're doing with low-level libvirt interaction, it is not
+recommended to blindly click items in the interface. There are very few
+confirmations as the interface assumes you know what you're doing. Good luck.
+`,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		viper.BindPFlag("layershell.enabled", cmd.Flags().Lookup("layershell"))
+		viper.BindPFlag("layershell.width", cmd.Flags().Lookup("layershell-width"))
+		viper.BindPFlag("layershell.height", cmd.Flags().Lookup("layershell-height"))
+		viper.BindPFlag("use_style", cmd.Flags().Lookup("use-style"))
+		viper.BindPFlag("style", cmd.Flags().Lookup("style"))
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		if cfg, err := config.NewFromViper(); err != nil {
+			logrus.WithError(err).Fatal("failed to load configuration")
+		} else {
+			app := gui.NewApplication(&cfg)
+			app.Run(args)
+		}
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -57,6 +86,13 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $XDG_CONFIG_HOME/vroomm/config.toml)")
 	rootCmd.PersistentFlags().StringP("connect", "c", "qemu:///system", "Libvirt Connection String")
+
+	// Here you will define your flags and configuration settings.
+	rootCmd.Flags().Bool("layershell", false, "Enable WLR Layer Shell to create an overlay window")
+	rootCmd.Flags().IntP("layershell-width", "W", 0, "Width of the layershell overlay as a percent of the current output")
+	rootCmd.Flags().IntP("layershell-height", "H", 0, "Height of the layershell overlay as a percent of the current output")
+	rootCmd.Flags().Bool("use-style", false, "Enable loading of GTK stylesheets")
+	rootCmd.Flags().String("style", "", "Override the GTK stylesheet search order with an explicit path")
 
 	viper.BindPFlag("connect_uri", rootCmd.PersistentFlags().Lookup("connect"))
 }

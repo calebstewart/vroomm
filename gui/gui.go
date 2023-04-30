@@ -209,7 +209,8 @@ func (app *Application) activate() {
 		// every millisecond for up to 1 second, and then quits. It works, but I'm not happy
 		// about it.
 		go func() {
-			ctx, _ := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
 			for {
 				select {
 				case <-time.After(time.Millisecond):
@@ -220,10 +221,10 @@ func (app *Application) activate() {
 				}
 			}
 		}()
-	}
 
-	// Setup the initial geometry
-	app.updateWindowGeometry(app.Window)
+		// Setup the initial geometry
+		app.updateWindowGeometry(app.Window)
+	}
 }
 
 // Handler for 'configure-event' which handles changes in geometry based on
