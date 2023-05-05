@@ -58,6 +58,7 @@ don't know what you're doing with low-level libvirt interaction, it is not
 recommended to blindly click items in the interface. There are very few
 confirmations as the interface assumes you know what you're doing. Good luck.
 `,
+	Args: cobra.ExactArgs(0),
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("layershell.enabled", cmd.Flags().Lookup("layershell"))
 		viper.BindPFlag("layershell.width", cmd.Flags().Lookup("layershell-width"))
