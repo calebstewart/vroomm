@@ -1,8 +1,6 @@
 
 # Vroomm - Virtual Machine Manager
 
-https://user-images.githubusercontent.com/7529189/233939436-b5837f88-93e4-44c3-bf11-558dbcf0a930.mp4
-
 Vroomm is a simple virtual machine manager for `libvirt`. The motivation for
 this project was the relatively negative view I have towards `virt-manager`.
 The stated goals of `virt-manager` is not to be user-friendly, but to be
@@ -39,6 +37,9 @@ Features In Progress:
   terminal. This is mainly an issue for remote connections that use
   user/password or an SSH key with a passphrase.
 * View "child" VMs which exist as clones of a single VM
+
+## Demo Video
+[<img src="https://img.youtube.com/vi/cX1ml4Le9pY/maxresdefault.jpg" width="100%" alt="Watch Vroomm Demo" title="Vroomm Demo Video">](https://www.youtube.com/watch?v=cX1ml4Le9pY)
 
 ## Usage
 The package builds a single binary. I hope to eventually provide a
