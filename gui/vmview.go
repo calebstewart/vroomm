@@ -7,11 +7,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"strings"
 	"time"
 
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v3"
+	"github.com/skratchdot/open-golang/open"
 	"libvirt.org/go/libvirt"
 	"libvirt.org/go/libvirtxml"
 
@@ -64,6 +66,11 @@ func (view *VirtualMachineView) updateView(app *Application) error {
 		return err
 	}
 
+	interfaces, err := view.Domain.ListAllInterfaceAddresses(libvirt.DOMAIN_INTERFACE_ADDRESSES_SRC_AGENT)
+	if err != nil {
+		interfaces = []libvirt.DomainInterface{}
+	}
+
 	state, _, err := view.Domain.GetState()
 	if err != nil {
 		return err
@@ -86,6 +93,11 @@ func (view *VirtualMachineView) updateView(app *Application) error {
 		prettyState = "Running"
 		view.CreateItem(app, "computer-symbolic", "Open Viewer", app.ActivationWithPulse("Opening with virt-viewer...", view.openViewer))
 		view.CreateItem(app, "system-search-symbolic", "Open Looking Glass", app.ActivationWithPulse("Opening with looking-glass...", view.openLookingGlass))
+
+		if len(interfaces) > 0 {
+			view.CreateItem(app, "utilities-terminal-symbolic", "Open SSH Connection", app.Activation(view.openSSHConnection))
+		}
+
 		view.CreateItem(app, "system-shutdown-symbolic", "Shutdown", app.ActivationWithPulse("Requesting VM Shutdown...", view.shutDown))
 		view.CreateItem(app, "face-shutmouth-symbolic", "Force Off", app.ActivationWithPulse("Forcing VM Off...", view.forceOff))
 		view.CreateItem(app, "media-floppy-symbolic", "Save State", app.ActivationWithPulse("Saving VM State...", view.saveState))
@@ -121,6 +133,22 @@ func (view *VirtualMachineView) updateView(app *Application) error {
 	addPropertyRow(grid, 1, "State:", prettyState)
 	addPropertyRow(grid, 2, "CPU:", "%v", domXml.VCPU.Value)
 	addPropertyRow(grid, 3, "Memory:", "%v-%v", domXml.Memory.Value, domXml.Memory.Unit)
+
+	for idx, iface := range interfaces {
+		if iface.Name == "lo" {
+			continue
+		}
+
+		// Collect all the addresses
+		addresses := []string{}
+		for _, addr := range iface.Addrs {
+			addresses = append(addresses, fmt.Sprintf("%v/%v", addr.Addr, addr.Prefix))
+		}
+
+		// Add the interface
+		addPropertyRow(grid, 4+idx, fmt.Sprintf("Interface %v", iface.Name), strings.Join(addresses, ", "))
+	}
+
 	grid.ShowAll()
 
 	if view.PropertyView.Child() != nil {
@@ -263,6 +291,72 @@ func (view *VirtualMachineView) saveState(app *Application) (string, error) {
 
 func (view *VirtualMachineView) start(app *Application) (string, error) {
 	return "Virtual Machine Started", view.Domain.Create()
+}
+
+func (view *VirtualMachineView) openSSHConnection(app *Application) (string, error) {
+
+	interfaces, err := view.Domain.ListAllInterfaceAddresses(libvirt.DOMAIN_INTERFACE_ADDRESSES_SRC_AGENT)
+	if err != nil {
+		return "", err
+	} else if len(interfaces) == 0 {
+		return "", fmt.Errorf("No interfaces found for domain '%v'", view.DomainName)
+	}
+
+	ifaceMap := map[string]*libvirt.DomainIPAddress{}
+	ifaceAddrItems := []*LabelItem{}
+	for ifaceIdx := range interfaces {
+		for addrIdx := range interfaces[ifaceIdx].Addrs {
+			// Ignore loopback interfaces
+			if interfaces[ifaceIdx].Name == "lo" {
+				continue
+			}
+			itemLabel := fmt.Sprintf("%v: %v", interfaces[ifaceIdx].Name, interfaces[ifaceIdx].Addrs[addrIdx].Addr)
+			ifaceMap[itemLabel] = &interfaces[ifaceIdx].Addrs[addrIdx]
+			ifaceAddrItems = append(ifaceAddrItems, NewLabelItem("network-server-symbolic", itemLabel))
+		}
+	}
+
+	currentUser, err := user.Current()
+
+	app.Push(
+		NewPrompt(
+			app,
+			"Select Interface",
+			"Interface>",
+			true,
+			func(app *Application, ifaceName string) {
+				app.Logger.Info(ifaceName)
+				addr := ifaceMap[ifaceName]
+				app.Push(
+					NewPrompt(
+						app,
+						fmt.Sprintf("Select User for %v", addr.Addr),
+						"User>",
+						false,
+						func(app *Application, username string) {
+							app.Pop()
+							app.Pop()
+							connStr := fmt.Sprintf("ssh://%v@%v", username, addr.Addr)
+							app.ActivationWithPulse(
+								fmt.Sprintf("Opening %v...", connStr),
+								func(app *Application) (string, error) {
+									if err := open.Start(connStr); err != nil {
+										return "", err
+									}
+
+									app.Quit()
+									return "SSH Session Opened", nil
+								},
+							)()
+						},
+						NewLabelItem("user-info-symbolic", currentUser.Username),
+					))
+			},
+			ifaceAddrItems...,
+		),
+	)
+
+	return "", nil
 }
 
 func (view *VirtualMachineView) linkedClone(app *Application) (string, error) {

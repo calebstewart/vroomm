@@ -75,6 +75,18 @@ func (menu *FlowboxMenu) Enter(app *Application) error {
 	menu.FlowBox.SetFilterFunc(func(child *gtk.FlowBoxChild) bool {
 		return menu.filter(app, child)
 	})
+
+	// Ensure that only the first item is selected
+	menu.FlowBox.UnselectAll()
+	if children := menu.FlowBox.Children(); children == nil || len(children) <= 1 {
+		return nil
+	} else if child, ok := children[0].(*gtk.FlowBoxChild); !ok {
+		return nil
+	} else if _, ok := menu.items[child.Name()]; !ok {
+		return nil
+	} else {
+		menu.FlowBox.SelectChild(child)
+	}
 	return nil
 }
 

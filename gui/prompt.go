@@ -50,9 +50,10 @@ func NewPrompt(app *Application, title string, prompt string, requireExisting bo
 		view.Add(NewPromptNewItem(app, len(items) == 0, action))
 	}
 
-	for _, item := range items {
+	for idx := range items {
+		var item *LabelItem = items[idx]
 		item.ConnectActivate(func() {
-			action(app, item.Child().(*gtk.Box).Children()[1].(*gtk.Label).Text())
+			action(app, item.Text)
 		})
 		view.Add(item)
 	}

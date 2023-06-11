@@ -460,6 +460,7 @@ func (app *Application) Push(view View) {
 
 	// Reset the input box
 	app.Entry.SetText("")
+	app.Entry.GrabFocus()
 	app.Window.SetFocus(app.Entry)
 
 	go func() {
@@ -526,6 +527,7 @@ func (app *Application) ReplaceTop(view View) {
 
 	// Reset the input box
 	app.Entry.SetText("")
+	app.Entry.GrabFocus()
 	app.Window.SetFocus(app.Entry)
 }
 
@@ -570,6 +572,7 @@ func (app *Application) PopNoTransition() {
 
 	// Reset the input box
 	app.Entry.SetText("")
+	app.Entry.GrabFocus()
 	app.Window.SetFocus(app.Entry)
 }
 
@@ -634,5 +637,6 @@ func (app *Application) Pop() {
 
 	// Reset the input box
 	app.Entry.SetText("")
+	app.Entry.GrabFocus()
 	app.Window.SetFocus(app.Entry)
 }
