@@ -22,7 +22,6 @@ func New(connectionUri string) (*Connection, error) {
 }
 
 func (c *Connection) EnumerateActiveDomains() ([]*Domain, error) {
-
 	rawDomains, err := c.ListAllDomains(libvirt.CONNECT_LIST_DOMAINS_ACTIVE)
 	if err != nil {
 		return nil, err
@@ -41,7 +40,6 @@ func (c *Connection) EnumerateActiveDomains() ([]*Domain, error) {
 }
 
 func (c *Connection) EnumerateAllDomains() ([]*Domain, error) {
-
 	rawDomains, err := c.ListAllDomains(0)
 	if err != nil {
 		return nil, err
